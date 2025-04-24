@@ -1,10 +1,13 @@
 package rfctree
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"image/color"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -134,6 +137,9 @@ type Metadata struct {
 	// PubYear is a publication year.
 	PubYear int
 
+	// Keywords are keywords that are normalized to uppercase.
+	Keywords []string
+
 	// IsTarget
 	IsTarget bool
 
@@ -157,6 +163,18 @@ func NewRfc(data []byte) (*Rfc, error) {
 		return nil, ErrRfcNotIssued
 	}
 
+	rfc.Draft = strings.TrimSpace(rfc.Draft)
+	rfc.DocId = strings.TrimSpace(rfc.DocId)
+	rfc.Title = strings.TrimSpace(rfc.Title)
+	rfc.Abstract = strings.TrimSpace(rfc.Abstract)
+	rfc.Source = strings.TrimSpace(rfc.Source)
+	rfc.Keywords = *trimSpaceFromSlice(&rfc.Keywords)
+	rfc.Obsoletes = *trimSpaceFromSlice(&rfc.Obsoletes)
+	rfc.ObsoletedBy = *trimSpaceFromSlice(&rfc.ObsoletedBy)
+	rfc.Updates = *trimSpaceFromSlice(&rfc.Updates)
+	rfc.UpdatedBy = *trimSpaceFromSlice(&rfc.UpdatedBy)
+	rfc.SeeAlso = *trimSpaceFromSlice(&rfc.SeeAlso)
+
 	t := toTime(rfc.PubDate)
 
 	rfc.Metadata = Metadata{
@@ -165,9 +183,18 @@ func NewRfc(data []byte) (*Rfc, error) {
 		SubSeries:      toSubSeries(rfc.SeeAlso),
 		PubDateInMonth: (t.Year()-yearOfOrigin)*12 + int(t.Month()) - 1,
 		PubYear:        t.Year(),
+		Keywords:       normalizeKeywords(rfc.Keywords),
 	}
 
 	return &rfc, nil
+}
+
+func trimSpaceFromSlice(s *[]string) *[]string {
+	trimmed := make([]string, len(*s))
+	for _, v := range *s {
+		trimmed = append(trimmed, strings.TrimSpace(v))
+	}
+	return &trimmed
 }
 
 var docIdRe = regexp.MustCompile(`^([A-Z]+)0+([0-9]+?)$`)
@@ -206,4 +233,31 @@ func toTime(pubDate string) time.Time {
 		panic(err)
 	}
 	return t
+}
+
+func normalizeKeywords(keywords []string) []string {
+	normalized := make([]string, len(keywords))
+	for _, keyword := range keywords {
+		normalized = append(normalized, strings.ToUpper(keyword))
+	}
+	return normalized
+}
+
+func getTargetDocIds(rfcMap map[string]*Rfc, keywords []string) []string {
+	var targetDocIds []string
+	rfcs := slices.SortedFunc(maps.Values(rfcMap), func(a, b *Rfc) int {
+		return cmp.Compare(a.DocId, b.DocId)
+	})
+	for _, rfc := range rfcs {
+		for _, keyword := range keywords {
+			if slices.Contains(rfc.Metadata.Keywords, keyword) {
+				rfc.Metadata.IsTarget = true
+				break
+			}
+		}
+		if rfc.Metadata.IsTarget {
+			targetDocIds = append(targetDocIds, rfc.DocId)
+		}
+	}
+	return targetDocIds
 }

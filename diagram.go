@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"image/color"
-	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -26,7 +25,7 @@ const (
 	canvasMargin = 20.0
 )
 
-func GenerateTreeDiagram(rfcsDir string, keywords []string) error {
+func CreateDiagram(rfcsDir, outputFilename string, keywords []string) error {
 	rfcMap, err := ReadRfcJsonFiles(rfcsDir)
 	if err != nil {
 		return err
@@ -94,27 +93,11 @@ func GenerateTreeDiagram(rfcsDir string, keywords []string) error {
 	}
 	ctx.Close()
 
-	if err := renderers.Write("getting-started.png", rfcCanvas, canvas.DPMM(10.0)); err != nil {
+	if err := renderers.Write(outputFilename, rfcCanvas, canvas.DPMM(10.0)); err != nil {
 		panic(err)
 	}
 
 	return nil
-}
-
-func getTargetDocIds(rfcMap map[string]*Rfc, keywords []string) []string {
-	var targetDocIds []string
-	rfcs := slices.SortedFunc(maps.Values(rfcMap), func(a, b *Rfc) int {
-		return cmp.Compare(a.DocId, b.DocId)
-	})
-	for _, rfc := range rfcs {
-		for _, keyword := range keywords {
-			if slices.Contains(rfc.Keywords, keyword) {
-				rfc.Metadata.IsTarget = true
-				targetDocIds = append(targetDocIds, rfc.DocId)
-			}
-		}
-	}
-	return targetDocIds
 }
 
 func getYearRange(rfcMap map[string]*Rfc, rfcDocIds []string) (minYear, maxYear int) {
@@ -231,12 +214,17 @@ func drawLine(ctx *canvas.Context, sourceRfc, destRfc *Rfc, isUpdate, isObsolete
 	if isObsolete {
 		lineColor = color.RGBA{87, 50, 14, 255}
 	}
+	ctx.SetFillColor(lineColor)
 	ctx.SetStrokeColor(lineColor)
 	ctx.SetStrokeWidth(1.0)
 
 	source := positionToCoordinate(sourceRfc.Metadata.Position)
 	dest := positionToCoordinate(destRfc.Metadata.Position)
-	ctx.MoveTo(source.X+labelSize.W, source.Y)
-	ctx.LineTo(dest.X, dest.Y)
-	ctx.Stroke()
+
+	startingMarker := canvas.Circle(0.1)
+	polyline := canvas.Polyline{}
+	endingMarker := polyline.Add(0, 0).Add(-1.5, -1.0).Add(-1.5, 1.0).Close().ToPath()
+	line := canvas.Line(dest.X-(source.X+labelSize.W), dest.Y-source.Y)
+	markers := line.Markers(startingMarker, nil, endingMarker, true)
+	ctx.DrawPath(source.X+labelSize.W, source.Y, markers[0], line, markers[1])
 }
