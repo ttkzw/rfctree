@@ -1,16 +1,18 @@
 package rfctree
 
-import "fmt"
+import (
+	"fmt"
+)
 
 func List(rfcsDir, outputFilename string, keywords []string) error {
-	rfcMap, err := ReadRfcJsonFiles(rfcsDir)
+	rfcIndex, err := NewRfcIndex(rfcsDir)
 	if err != nil {
 		return err
 	}
 
-	// for _, docId := range slices.Sorted(maps.Keys(rfcMap)) {
-	// 	rfc := rfcMap[docId]
-	// 	for _, v := range rfc.Format {
+	// for _, docId := range rfcIndex.Keys() {
+	// 	rfc := rfcIndex.Find(docId)
+	// 	for _, v := range rfc.Doc.Format {
 	// 		if strings.HasPrefix(v, " ") {
 	// 			fmt.Printf("%s %s\n", rfc.DocId, v)
 	// 		}
@@ -20,11 +22,8 @@ func List(rfcsDir, outputFilename string, keywords []string) error {
 	// 	}
 	// }
 
-	targetDocIds := getTargetDocIds(rfcMap, keywords)
-
-	for _, docId := range targetDocIds {
-		rfc := rfcMap[docId]
-		fmt.Printf("%s %s\n", docId, rfc.Title)
+	for _, rfc := range rfcIndex.FindAllByKeywords(keywords) {
+		fmt.Printf("%s %s\n", rfc.Doc.DocId, rfc.Doc.Title)
 	}
 
 	return nil

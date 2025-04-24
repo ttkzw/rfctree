@@ -9,16 +9,14 @@ import (
 )
 
 func ListKeyword(rfcsDir string, keywords []string) error {
-	rfcMap, err := ReadRfcJsonFiles(rfcsDir)
+	rfcIndex, err := NewRfcIndex(rfcsDir)
 	if err != nil {
 		return err
 	}
 
-	targetDocIds := getTargetDocIds(rfcMap, keywords)
-
 	keywordMap := make(map[string]int, len(keywords))
-	for _, docId := range targetDocIds {
-		for _, keyword := range rfcMap[docId].Metadata.Keywords {
+	for _, rfc := range rfcIndex.FindAllByKeywords(keywords) {
+		for _, keyword := range rfc.Keywords {
 			if keyword == "" {
 				continue
 			}

@@ -26,17 +26,17 @@ const (
 )
 
 func CreateDiagram(rfcsDir, outputFilename string, keywords []string) error {
-	rfcMap, err := ReadRfcJsonFiles(rfcsDir)
+	rfcIndex, err := NewRfcIndex(rfcsDir)
 	if err != nil {
 		return err
 	}
 
-	targetDocIds := getTargetDocIds(rfcMap, keywords)
+	targetRfcs := rfcIndex.FindAllByKeywords(keywords)
 
-	minYear, maxYear := getYearRange(rfcMap, targetDocIds)
+	minYear, maxYear := getYearRange(targetRfcs)
 	years := maxYear - minYear + 2
 	x := years * 12
-	y := getArrangementCapacity(rfcMap, targetDocIds, minYear, maxYear)
+	y := getArrangementCapacity(targetRfcs, minYear, maxYear)
 	rfcCanvas := canvas.New(float64(x)*cellSize.W+canvasMargin*2, float64(y)*cellSize.H+canvasMargin*2)
 	ctx := canvas.NewContext(rfcCanvas)
 	drawBackground(rfcCanvas, ctx)
@@ -55,27 +55,26 @@ func CreateDiagram(rfcsDir, outputFilename string, keywords []string) error {
 	drawXAxisLine(ctx, axisFace, years, y)
 	drawYAxisLine(ctx, axisFace, minYear, years, y)
 	originMonth := (minYear - yearOfOrigin) * 12
-	arrangePosition(rfcMap, targetDocIds, originMonth)
+	arrangePosition(targetRfcs, originMonth)
 
-	for _, docId := range targetDocIds {
-		rfc := rfcMap[docId]
-		for _, sourceDocId := range rfc.Updates {
-			sourceRfc, ok := rfcMap[sourceDocId]
-			if !ok {
+	for _, rfc := range targetRfcs {
+		for _, sourceDocId := range rfc.Doc.Updates {
+			if !rfcIndex.Exist(sourceDocId) {
 				continue
 			}
-			if !sourceRfc.Metadata.IsTarget {
+			sourceRfc := rfcIndex.Find(sourceDocId)
+			if !sourceRfc.IsTarget {
 				continue
 			}
 			drawLine(ctx, sourceRfc, rfc, true, false)
 		}
 
-		for _, sourceDocId := range rfc.Obsoletes {
-			sourceRfc, ok := rfcMap[sourceDocId]
-			if !ok {
+		for _, sourceDocId := range rfc.Doc.Obsoletes {
+			if !rfcIndex.Exist(sourceDocId) {
 				continue
 			}
-			if !sourceRfc.Metadata.IsTarget {
+			sourceRfc := rfcIndex.Find(sourceDocId)
+			if !sourceRfc.IsTarget {
 				continue
 			}
 			drawLine(ctx, sourceRfc, rfc, false, true)
@@ -83,9 +82,8 @@ func CreateDiagram(rfcsDir, outputFilename string, keywords []string) error {
 	}
 
 	labelFace := fontFamily.Face(labelFontSize, canvas.White, canvas.FontBold, canvas.FontNormal)
-	for _, docId := range targetDocIds {
-		rfc := rfcMap[docId]
-		if !rfc.Metadata.IsTarget {
+	for _, rfc := range targetRfcs {
+		if !rfc.IsTarget {
 			continue
 		}
 
@@ -100,39 +98,36 @@ func CreateDiagram(rfcsDir, outputFilename string, keywords []string) error {
 	return nil
 }
 
-func getYearRange(rfcMap map[string]*Rfc, rfcDocIds []string) (minYear, maxYear int) {
-	minYearDocId := slices.MinFunc(rfcDocIds, func(a, b string) int {
-		return cmp.Compare(rfcMap[a].Metadata.PubYear, rfcMap[b].Metadata.PubYear)
+func getYearRange(rfcs []*Rfc) (minYear, maxYear int) {
+	minYearRfc := slices.MinFunc(rfcs, func(a, b *Rfc) int {
+		return cmp.Compare(a.PubYear, b.PubYear)
 	})
-	maxYearDocId := slices.MaxFunc(rfcDocIds, func(a, b string) int {
-		return cmp.Compare(rfcMap[a].Metadata.PubYear, rfcMap[b].Metadata.PubYear)
+	maxYearRfc := slices.MaxFunc(rfcs, func(a, b *Rfc) int {
+		return cmp.Compare(a.PubYear, b.PubYear)
 	})
-	minYear = rfcMap[minYearDocId].Metadata.PubYear
-	maxYear = rfcMap[maxYearDocId].Metadata.PubYear
-	return minYear, maxYear
+	return minYearRfc.PubYear, maxYearRfc.PubYear
 }
 
-func getArrangementCapacity(rfcMap map[string]*Rfc, docIds []string, minYear, maxYear int) int {
+func getArrangementCapacity(rfcs []*Rfc, minYear, maxYear int) int {
 	const (
 		arrangementRange = 5
 		ratio            = 2
 	)
 
 	numOfyear := make([]int, maxYear-minYear+arrangementRange+1)
-	for _, docId := range docIds {
+	for _, rfc := range rfcs {
 		for i := range arrangementRange {
-			numOfyear[rfcMap[docId].Metadata.PubYear-minYear+i]++
+			numOfyear[rfc.PubYear-minYear+i]++
 		}
 	}
 	return slices.Max(numOfyear) * ratio
 }
 
-func arrangePosition(rfcMap map[string]*Rfc, rfcDocIds []string, originMonth int) {
+func arrangePosition(rfcs []*Rfc, originMonth int) {
 	y := 1
-	for _, docId := range rfcDocIds {
-		rfc := rfcMap[docId]
-		rfc.Metadata.Position.X = rfc.Metadata.PubDateInMonth - originMonth
-		rfc.Metadata.Position.Y = y
+	for _, rfc := range rfcs {
+		rfc.Position.X = rfc.PubDateInMonth - originMonth
+		rfc.Position.Y = y
 		y = y + 1
 	}
 }
@@ -185,23 +180,23 @@ func drawYAxisLine(ctx *canvas.Context, face *canvas.FontFace, minYear, elapsedY
 }
 
 func drawLabel(ctx *canvas.Context, face *canvas.FontFace, rfc *Rfc) {
-	ctx.SetFillColor(rfc.Metadata.Status.Color())
+	ctx.SetFillColor(rfc.Status.Color())
 	ctx.SetStrokeColor(color.Gray{Y: 127})
 	ctx.SetStrokeWidth(0.1)
 
-	c := positionToCoordinate(rfc.Metadata.Position)
+	c := positionToCoordinate(rfc.Position)
 	ctx.DrawPath(c.X, c.Y-labelSize.H*0.5, canvas.RoundedRectangle(labelSize.W, labelSize.H, 1))
 
 	var b strings.Builder
-	b.WriteString(rfc.Metadata.DocId)
+	b.WriteString(rfc.DocId)
 	b.WriteString(" / ")
-	if rfc.Metadata.SubSeries != "" {
-		b.WriteString(rfc.Metadata.SubSeries)
+	if rfc.SubSeries != "" {
+		b.WriteString(rfc.SubSeries)
 	} else {
-		b.WriteString(rfc.Metadata.Status.Display())
+		b.WriteString(rfc.Status.Display())
 	}
 	b.WriteString("\n")
-	b.WriteString(rfc.Title)
+	b.WriteString(rfc.Doc.Title)
 	textBox := canvas.NewTextBox(face, b.String(), labelSize.W-labelPadding*2, labelSize.H-labelPadding*2, canvas.Left, canvas.Top, 0, 0)
 	ctx.DrawText(c.X+labelPadding, c.Y+labelSize.H/2-labelPadding, textBox)
 }
@@ -218,8 +213,8 @@ func drawLine(ctx *canvas.Context, sourceRfc, destRfc *Rfc, isUpdate, isObsolete
 	ctx.SetStrokeColor(lineColor)
 	ctx.SetStrokeWidth(1.0)
 
-	source := positionToCoordinate(sourceRfc.Metadata.Position)
-	dest := positionToCoordinate(destRfc.Metadata.Position)
+	source := positionToCoordinate(sourceRfc.Position)
+	dest := positionToCoordinate(destRfc.Position)
 
 	startingMarker := canvas.Circle(0.1)
 	polyline := canvas.Polyline{}
