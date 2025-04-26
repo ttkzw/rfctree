@@ -2,11 +2,9 @@ package rfctree
 
 import (
 	"cmp"
-	"fmt"
 	"image/color"
 	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/tdewolff/canvas"
 	"github.com/tdewolff/canvas/renderers"
@@ -16,13 +14,18 @@ var cellSize = canvas.Size{W: 2.0, H: 20.0}
 var labelSize = canvas.Size{W: 24.0, H: 14.0}
 
 const (
-	axisFontSize  = 10.0
+	axisFontSize  = 12.0
 	labelFontSize = 5.0
 )
 
 const (
 	labelPadding = 1.0
 	canvasMargin = 20.0
+)
+
+var (
+	updatedLineColor   = color.RGBA{0, 0, 223, 255}
+	obsoletedLineColor = color.RGBA{87, 50, 14, 255}
 )
 
 func CreateDiagram(rfcsDir, outputFilename string, keywords []string) error {
@@ -33,63 +36,36 @@ func CreateDiagram(rfcsDir, outputFilename string, keywords []string) error {
 
 	targetRfcs := rfcIndex.FindAllByKeywords(keywords)
 
-	minYear, maxYear := getYearRange(targetRfcs)
-	years := maxYear - minYear + 2
-	x := years * 12
-	y := getArrangementCapacity(targetRfcs, minYear, maxYear)
-	rfcCanvas := canvas.New(float64(x)*cellSize.W+canvasMargin*2, float64(y)*cellSize.H+canvasMargin*2)
+	yearMin, yearMax := getYearRange(targetRfcs)
+	xmax := (yearMax - yearMin + 2) * 12
+	ymax := getArrangementCapacity(targetRfcs, yearMin, yearMax)
+	rfcCanvas := canvas.New(float64(xmax)*cellSize.W+canvasMargin*2, float64(ymax)*cellSize.H+canvasMargin*2)
 	ctx := canvas.NewContext(rfcCanvas)
 	drawBackground(rfcCanvas, ctx)
-
-	fmt.Println(rfcCanvas.Size())
 
 	fontFamily := canvas.NewFontFamily("Arial")
 	if err := fontFamily.LoadSystemFont("Arial", canvas.FontRegular); err != nil {
 		panic(err)
 	}
-	if err := fontFamily.LoadSystemFont("Arial", canvas.FontBold); err != nil {
-		panic(err)
-	}
+	axisFace := fontFamily.Face(axisFontSize, canvas.Black, canvas.FontNormal)
+	drawAxisLine(ctx, axisFace, yearMin, xmax, ymax)
+	drawGrid(ctx, yearMin, xmax, ymax)
 
-	axisFace := fontFamily.Face(axisFontSize, canvas.Black, canvas.FontBold, canvas.FontNormal)
-	drawXAxisLine(ctx, axisFace, years, y)
-	drawYAxisLine(ctx, axisFace, minYear, years, y)
-	originMonth := (minYear - yearOfOrigin) * 12
-	arrangePosition(targetRfcs, originMonth)
+	arrangePosition(targetRfcs, yearMin)
 
 	for _, rfc := range targetRfcs {
-		for _, sourceDocId := range rfc.Doc.Updates {
-			if !rfcIndex.Exist(sourceDocId) {
-				continue
-			}
-			sourceRfc := rfcIndex.Find(sourceDocId)
-			if !sourceRfc.IsTarget {
-				continue
-			}
-			drawLine(ctx, sourceRfc, rfc, true, false)
-		}
-
-		for _, sourceDocId := range rfc.Doc.Obsoletes {
-			if !rfcIndex.Exist(sourceDocId) {
-				continue
-			}
-			sourceRfc := rfcIndex.Find(sourceDocId)
-			if !sourceRfc.IsTarget {
-				continue
-			}
-			drawLine(ctx, sourceRfc, rfc, false, true)
-		}
+		drawRelationLines(ctx, rfcIndex, rfc)
 	}
 
-	labelFace := fontFamily.Face(labelFontSize, canvas.White, canvas.FontBold, canvas.FontNormal)
+	labelFace := fontFamily.Face(labelFontSize, canvas.White, canvas.FontNormal)
 	for _, rfc := range targetRfcs {
 		if !rfc.IsTarget {
 			continue
 		}
 
-		drawLabel(ctx, labelFace, rfc)
+		drawRfcLabel(ctx, labelFace, rfc)
 	}
-	ctx.Close()
+	//ctx.Close()
 
 	if err := renderers.Write(outputFilename, rfcCanvas, canvas.DPMM(10.0)); err != nil {
 		panic(err)
@@ -98,19 +74,19 @@ func CreateDiagram(rfcsDir, outputFilename string, keywords []string) error {
 	return nil
 }
 
-func getYearRange(rfcs []*Rfc) (minYear, maxYear int) {
-	minYearRfc := slices.MinFunc(rfcs, func(a, b *Rfc) int {
+func getYearRange(rfcs []*RfcLabel) (minYear, maxYear int) {
+	minYearRfc := slices.MinFunc(rfcs, func(a, b *RfcLabel) int {
 		return cmp.Compare(a.PubYear, b.PubYear)
 	})
-	maxYearRfc := slices.MaxFunc(rfcs, func(a, b *Rfc) int {
+	maxYearRfc := slices.MaxFunc(rfcs, func(a, b *RfcLabel) int {
 		return cmp.Compare(a.PubYear, b.PubYear)
 	})
 	return minYearRfc.PubYear, maxYearRfc.PubYear
 }
 
-func getArrangementCapacity(rfcs []*Rfc, minYear, maxYear int) int {
+func getArrangementCapacity(rfcs []*RfcLabel, minYear, maxYear int) int {
 	const (
-		arrangementRange = 5
+		arrangementRange = 2
 		ratio            = 2
 	)
 
@@ -123,7 +99,9 @@ func getArrangementCapacity(rfcs []*Rfc, minYear, maxYear int) int {
 	return slices.Max(numOfyear) * ratio
 }
 
-func arrangePosition(rfcs []*Rfc, originMonth int) {
+func arrangePosition(rfcs []*RfcLabel, yearMin int) {
+	originMonth := (yearMin - yearOfOrigin) * 12
+
 	y := 1
 	for _, rfc := range rfcs {
 		rfc.Position.X = rfc.PubDateInMonth - originMonth
@@ -139,7 +117,7 @@ type Coodinate struct {
 
 func positionToCoordinate(p Position) Coodinate {
 	x := float64(p.X)*cellSize.W + canvasMargin
-	y := float64(p.Y)*cellSize.H + canvasMargin
+	y := (float64(p.Y)+0.5)*cellSize.H + canvasMargin
 	return Coodinate{X: x, Y: y}
 }
 
@@ -150,65 +128,109 @@ func drawBackground(c *canvas.Canvas, ctx *canvas.Context) {
 	ctx.DrawPath(0, 0, canvas.Rectangle(c.W, c.H))
 }
 
-func drawXAxisLine(ctx *canvas.Context, face *canvas.FontFace, elapsedYear, y int) {
-	ctx.SetStrokeColor(canvas.Gray)
-	ctx.SetStrokeWidth(0.1)
-
-	for i := range y {
-		left := positionToCoordinate(Position{X: 0, Y: i})
-		right := positionToCoordinate(Position{X: elapsedYear * 12, Y: i})
-		ctx.MoveTo(left.X, left.Y)
-		ctx.LineTo(right.X, right.Y)
-		ctx.Stroke()
-	}
-}
-
-func drawYAxisLine(ctx *canvas.Context, face *canvas.FontFace, minYear, elapsedYear, y int) {
+func drawAxisLine(ctx *canvas.Context, face *canvas.FontFace, yearMin, xmax, ymax int) {
 	ctx.SetStrokeColor(canvas.Gray)
 	ctx.SetStrokeWidth(0.5)
 
-	for i := range elapsedYear {
+	// bottom line
+	{
+		left := positionToCoordinate(Position{X: 0, Y: 0})
+		right := positionToCoordinate(Position{X: xmax, Y: 0})
+		ctx.MoveTo(left.X, left.Y-cellSize.H/2)
+		ctx.LineTo(right.X, right.Y-cellSize.H/2)
+		ctx.Stroke()
+	}
+
+	// top line
+	{
+		left := positionToCoordinate(Position{X: 0, Y: ymax - 1})
+		right := positionToCoordinate(Position{X: xmax, Y: ymax - 1})
+		ctx.MoveTo(left.X, left.Y+cellSize.H/2)
+		ctx.LineTo(right.X, right.Y+cellSize.H/2)
+		ctx.Stroke()
+	}
+
+	// y-axis year label
+	for i := range int(xmax / 12) {
 		bottom := positionToCoordinate(Position{X: i * 12, Y: 0})
-		top := positionToCoordinate(Position{X: i * 12, Y: y})
-		ctx.MoveTo(bottom.X, bottom.Y)
-		ctx.LineTo(top.X, top.Y)
+		top := positionToCoordinate(Position{X: i * 12, Y: ymax - 1})
+		yearLabel := canvas.NewTextLine(face, strconv.Itoa(yearMin+i), canvas.Middle)
+		ctx.DrawText(bottom.X+cellSize.W*6, bottom.Y-cellSize.H/2-axisFontSize/2, yearLabel)
+		ctx.DrawText(top.X+cellSize.W*6, top.Y+cellSize.H/2+axisFontSize/2, yearLabel)
+	}
+
+}
+
+func drawGrid(ctx *canvas.Context, yearMin, xmax, ymax int) {
+	fontFamily := canvas.NewFontFamily("Arial")
+	if err := fontFamily.LoadSystemFont("Arial", canvas.FontRegular); err != nil {
+		panic(err)
+	}
+	if err := fontFamily.LoadSystemFont("Arial", canvas.FontBold); err != nil {
+		panic(err)
+	}
+	face := fontFamily.Face(axisFontSize, canvas.Grey, canvas.FontBold, canvas.FontNormal)
+
+	ctx.SetStrokeColor(canvas.Gray)
+	ctx.SetStrokeWidth(0.5)
+
+	// x grid line
+	for i := range int(xmax/12) + 1 {
+		bottom := positionToCoordinate(Position{X: i * 12, Y: 0})
+		top := positionToCoordinate(Position{X: i * 12, Y: ymax - 1})
+		ctx.MoveTo(bottom.X, bottom.Y-cellSize.H/2)
+		ctx.LineTo(top.X, top.Y+cellSize.H/2)
+		ctx.Stroke()
+	}
+
+	ctx.SetStrokeColor(canvas.Grey)
+	ctx.SetStrokeWidth(0.1)
+
+	// y grid line (for debug)
+	for i := range ymax {
+		left := positionToCoordinate(Position{X: 0, Y: i})
+		right := positionToCoordinate(Position{X: xmax, Y: i})
+		ctx.MoveTo(left.X, left.Y)
+		ctx.LineTo(right.X, right.Y)
 		ctx.Stroke()
 
-		ctx.DrawText(bottom.X+2.0, bottom.Y+2.0, canvas.NewTextLine(face, strconv.Itoa(minYear+i), canvas.Left))
-		ctx.DrawText(top.X+2.0, top.Y-axisFontSize, canvas.NewTextLine(face, strconv.Itoa(minYear+i), canvas.Left))
+		yLabel := canvas.NewTextLine(face, strconv.Itoa(i), canvas.Left)
+		ctx.DrawText(left.X, left.Y, yLabel)
 	}
 }
 
-func drawLabel(ctx *canvas.Context, face *canvas.FontFace, rfc *Rfc) {
+func drawRfcLabel(ctx *canvas.Context, face *canvas.FontFace, rfc *RfcLabel) {
 	ctx.SetFillColor(rfc.Status.Color())
 	ctx.SetStrokeColor(color.Gray{Y: 127})
 	ctx.SetStrokeWidth(0.1)
 
 	c := positionToCoordinate(rfc.Position)
+
 	ctx.DrawPath(c.X, c.Y-labelSize.H*0.5, canvas.RoundedRectangle(labelSize.W, labelSize.H, 1))
 
-	var b strings.Builder
-	b.WriteString(rfc.DocId)
-	b.WriteString(" / ")
-	if rfc.SubSeries != "" {
-		b.WriteString(rfc.SubSeries)
-	} else {
-		b.WriteString(rfc.Status.Display())
-	}
-	b.WriteString("\n")
-	b.WriteString(rfc.Doc.Title)
-	textBox := canvas.NewTextBox(face, b.String(), labelSize.W-labelPadding*2, labelSize.H-labelPadding*2, canvas.Left, canvas.Top, 0, 0)
+	textBox := canvas.NewTextBox(face, rfc.String(), labelSize.W-labelPadding*2, labelSize.H-labelPadding*2, canvas.Left, canvas.Top, 0, 0)
 	ctx.DrawText(c.X+labelPadding, c.Y+labelSize.H/2-labelPadding, textBox)
 }
 
-func drawLine(ctx *canvas.Context, sourceRfc, destRfc *Rfc, isUpdate, isObsolete bool) {
-	var lineColor color.Color
-	if isUpdate {
-		lineColor = color.RGBA{0, 0, 223, 255}
+func drawRelationLines(ctx *canvas.Context, rfcIndex RfcIndex, rfc *RfcLabel) {
+	for _, sourceDocId := range rfc.Doc.Updates {
+		sourceRfc := rfcIndex.Find(sourceDocId)
+		if sourceRfc == nil || !sourceRfc.IsTarget {
+			continue
+		}
+		drawArrowLine(ctx, sourceRfc, rfc, updatedLineColor)
 	}
-	if isObsolete {
-		lineColor = color.RGBA{87, 50, 14, 255}
+
+	for _, sourceDocId := range rfc.Doc.Obsoletes {
+		sourceRfc := rfcIndex.Find(sourceDocId)
+		if sourceRfc == nil || !sourceRfc.IsTarget {
+			continue
+		}
+		drawArrowLine(ctx, sourceRfc, rfc, obsoletedLineColor)
 	}
+}
+
+func drawArrowLine(ctx *canvas.Context, sourceRfc, destRfc *RfcLabel, lineColor color.Color) {
 	ctx.SetFillColor(lineColor)
 	ctx.SetStrokeColor(lineColor)
 	ctx.SetStrokeWidth(1.0)
@@ -216,10 +238,9 @@ func drawLine(ctx *canvas.Context, sourceRfc, destRfc *Rfc, isUpdate, isObsolete
 	source := positionToCoordinate(sourceRfc.Position)
 	dest := positionToCoordinate(destRfc.Position)
 
-	startingMarker := canvas.Circle(0.1)
 	polyline := canvas.Polyline{}
 	endingMarker := polyline.Add(0, 0).Add(-1.5, -1.0).Add(-1.5, 1.0).Close().ToPath()
 	line := canvas.Line(dest.X-(source.X+labelSize.W), dest.Y-source.Y)
-	markers := line.Markers(startingMarker, nil, endingMarker, true)
-	ctx.DrawPath(source.X+labelSize.W, source.Y, markers[0], line, markers[1])
+	markers := line.Markers(nil, nil, endingMarker, true)
+	ctx.DrawPath(source.X+labelSize.W, source.Y, line, markers[0])
 }

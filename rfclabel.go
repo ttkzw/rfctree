@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-type Rfc struct {
+type RfcLabel struct {
 	Doc *RfcDoc
 
 	// DocIs is a document ID for display
@@ -36,15 +36,10 @@ type Rfc struct {
 	Position Position
 }
 
-func NewRfc(data []byte) (*Rfc, error) {
-	rfcDoc, err := NewRfcDoc(data)
-	if err != nil {
-		return nil, err
-	}
-
+func NewRfcLabel(rfcDoc *RfcDoc) (*RfcLabel, error) {
 	t := toTime(rfcDoc.PubDate)
 
-	rfc := Rfc{
+	rfc := RfcLabel{
 		Doc:            rfcDoc,
 		DocId:          toDisplayDocId(rfcDoc.DocId),
 		Status:         NewStatus(rfcDoc.Status),
@@ -54,6 +49,20 @@ func NewRfc(data []byte) (*Rfc, error) {
 		Keywords:       normalizeKeywords(rfcDoc.Keywords),
 	}
 	return &rfc, nil
+}
+
+func (r *RfcLabel) String() string {
+	var b strings.Builder
+	b.WriteString(r.DocId)
+	b.WriteString(" / ")
+	if r.SubSeries != "" {
+		b.WriteString(r.SubSeries)
+	} else {
+		b.WriteString(r.Status.Display())
+	}
+	b.WriteString("\n")
+	b.WriteString(r.Doc.Title)
+	return b.String()
 }
 
 type Position struct {

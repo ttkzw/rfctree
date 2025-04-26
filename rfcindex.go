@@ -11,7 +11,7 @@ import (
 )
 
 type RfcIndex struct {
-	rfcMap map[string]*Rfc
+	rfcMap map[string]*RfcLabel
 }
 
 const defaultRfcIndexSize = 10000
@@ -22,7 +22,7 @@ func NewRfcIndex(rfcsDir string) (RfcIndex, error) {
 		return RfcIndex{}, err
 	}
 
-	rfcMap := make(map[string]*Rfc, defaultRfcIndexSize)
+	rfcMap := make(map[string]*RfcLabel, defaultRfcIndexSize)
 	for _, file := range files {
 		if file.IsDir() {
 			continue
@@ -37,10 +37,15 @@ func NewRfcIndex(rfcsDir string) (RfcIndex, error) {
 			return RfcIndex{}, fmt.Errorf("%s: %v", file.Name(), err.Error())
 		}
 
-		rfc, err := NewRfc(data)
+		rfcDoc, err := NewRfcDoc(data)
 		if err == ErrRfcNotIssued {
 			continue
 		}
+		if err != nil {
+			return RfcIndex{}, err
+		}
+
+		rfc, err := NewRfcLabel(rfcDoc)
 		if err != nil {
 			return RfcIndex{}, fmt.Errorf("%s: %v", file.Name(), err.Error())
 		}
@@ -55,12 +60,12 @@ func NewRfcIndex(rfcsDir string) (RfcIndex, error) {
 	return rfcIndex, nil
 }
 
-func (r RfcIndex) Find(docId string) *Rfc {
+func (r RfcIndex) Find(docId string) *RfcLabel {
 	return r.rfcMap[docId]
 }
 
-func (r RfcIndex) FindAllByKeywords(keywords []string) []*Rfc {
-	var rfcs []*Rfc
+func (r RfcIndex) FindAllByKeywords(keywords []string) []*RfcLabel {
+	var rfcs []*RfcLabel
 	for _, rfc := range r.Values() {
 		for _, keyword := range keywords {
 			if slices.Contains(rfc.Keywords, keyword) {
@@ -87,8 +92,8 @@ func (r RfcIndex) Keys() []string {
 	return docIds
 }
 
-func (r RfcIndex) Values() []*Rfc {
-	rfcs := slices.SortedFunc(maps.Values(r.rfcMap), func(a, b *Rfc) int {
+func (r RfcIndex) Values() []*RfcLabel {
+	rfcs := slices.SortedFunc(maps.Values(r.rfcMap), func(a, b *RfcLabel) int {
 		return cmp.Compare(a.Doc.DocId, b.Doc.DocId)
 	})
 	return rfcs
