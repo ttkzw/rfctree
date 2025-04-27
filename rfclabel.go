@@ -9,10 +9,17 @@ import (
 )
 
 type RfcLabel struct {
+	// Doc is a RFC Document.
 	Doc *RfcDoc
 
-	// DocIs is a document ID for display
+	// Document ID
 	DocId string
+
+	// DocIs is a document ID for display.
+	DisplayDocId string
+
+	// Title
+	Title string
 
 	// Status is a status of RFC.
 	Status Status
@@ -29,6 +36,11 @@ type RfcLabel struct {
 	// Keywords are keywords that are normalized to uppercase.
 	Keywords []string
 
+	Obsoletes   []string
+	ObsoletedBy []string
+	Updates     []string
+	UpdatedBy   []string
+
 	// IsTarget
 	IsTarget bool
 
@@ -41,19 +53,25 @@ func NewRfcLabel(rfcDoc *RfcDoc) (*RfcLabel, error) {
 
 	rfc := RfcLabel{
 		Doc:            rfcDoc,
-		DocId:          toDisplayDocId(rfcDoc.DocId),
+		DocId:          rfcDoc.DocId,
+		DisplayDocId:   toDisplayDocId(rfcDoc.DocId),
+		Title:          rfcDoc.Title,
 		Status:         NewStatus(rfcDoc.Status),
 		SubSeries:      toSubSeries(rfcDoc.SeeAlso),
 		PubDateInMonth: (t.Year()-yearOfOrigin)*12 + int(t.Month()) - 1,
 		PubYear:        t.Year(),
 		Keywords:       normalizeKeywords(rfcDoc.Keywords),
+		Obsoletes:      filterRelations(rfcDoc.Obsoletes),
+		ObsoletedBy:    filterRelations(rfcDoc.ObsoletedBy),
+		Updates:        filterRelations(rfcDoc.Updates),
+		UpdatedBy:      filterRelations(rfcDoc.UpdatedBy),
 	}
 	return &rfc, nil
 }
 
 func (r *RfcLabel) String() string {
 	var b strings.Builder
-	b.WriteString(r.DocId)
+	b.WriteString(r.DisplayDocId)
 	b.WriteString(" / ")
 	if r.SubSeries != "" {
 		b.WriteString(r.SubSeries)
@@ -61,7 +79,7 @@ func (r *RfcLabel) String() string {
 		b.WriteString(r.Status.Display())
 	}
 	b.WriteString("\n")
-	b.WriteString(r.Doc.Title)
+	b.WriteString(r.Title)
 	return b.String()
 }
 
@@ -180,12 +198,11 @@ const yearOfOrigin int = 1968
 func toTime(pubDate string) time.Time {
 	var t time.Time
 	var err error
-	layout := "2 January 2006"
 	if len(strings.Split(pubDate, " ")) == 2 {
 		pubDate = "1 " + pubDate
 	}
 
-	t, err = time.Parse(layout, pubDate)
+	t, err = time.Parse("2 January 2006", pubDate)
 	if err != nil {
 		panic(err)
 	}
@@ -193,9 +210,20 @@ func toTime(pubDate string) time.Time {
 }
 
 func normalizeKeywords(keywords []string) []string {
-	normalized := make([]string, len(keywords))
+	normalized := make([]string, 0, len(keywords))
 	for _, keyword := range keywords {
 		normalized = append(normalized, strings.ToUpper(keyword))
 	}
 	return normalized
+}
+
+func filterRelations(s []string) []string {
+	t := make([]string, 0, len(s))
+	for _, e := range s {
+		if !strings.HasPrefix(e, "RFC") {
+			continue
+		}
+		t = append(t, e)
+	}
+	return t
 }

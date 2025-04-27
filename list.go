@@ -23,7 +23,7 @@ func List(rfcsDir, outputFilename string, keywords []string) error {
 	// }
 
 	for _, rfc := range rfcIndex.FindAllByKeywords(keywords) {
-		fmt.Printf("%s %s\n", rfc.Doc.DocId, rfc.Doc.Title)
+		fmt.Printf("%s %s\n", rfc.DocId, rfc.Doc.Title)
 	}
 
 	return nil

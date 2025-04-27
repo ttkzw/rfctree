@@ -51,7 +51,7 @@ func CreateDiagram(rfcsDir, outputFilename string, keywords []string) error {
 	drawAxisLine(ctx, axisFace, yearMin, xmax, ymax)
 	drawGrid(ctx, yearMin, xmax, ymax)
 
-	arrangePosition(targetRfcs, yearMin)
+	arrangePosition(rfcIndex, targetRfcs, yearMin, xmax, ymax)
 
 	for _, rfc := range targetRfcs {
 		drawRelationLines(ctx, rfcIndex, rfc)
@@ -99,14 +99,29 @@ func getArrangementCapacity(rfcs []*RfcLabel, minYear, maxYear int) int {
 	return slices.Max(numOfyear) * ratio
 }
 
-func arrangePosition(rfcs []*RfcLabel, yearMin int) {
-	originMonth := (yearMin - yearOfOrigin) * 12
+func arrangePosition(rfcIndex *RfcIndex, rfcs []*RfcLabel, yearMin, xmax, ymax int) {
+	cell := make([][]string, xmax)
+	for x := range xmax {
+		cell[x] = make([]string, ymax)
+	}
 
-	y := 1
+	originMonth := (yearMin - yearOfOrigin) * 12
 	for _, rfc := range rfcs {
 		rfc.Position.X = rfc.PubDateInMonth - originMonth
-		rfc.Position.Y = y
-		y = y + 1
+	}
+
+	slices.SortFunc(rfcs, func(a, b *RfcLabel) int {
+		return cmp.Compare(a.Position.X, b.Position.X)
+	})
+
+	arrangement := NewArrangement(xmax, ymax)
+	for _, rfc := range rfcs {
+		candidate := arrangement.FindCandidatePositions(rfc.Position.X)
+		//for _, docId := range rfc.Obsoletes {
+		//	rfcIndex.Find(docId).Position.Y
+		//}
+		rfc.Position.Y = candidate[0]
+		arrangement.Set(rfc.Position, rfc.DocId)
 	}
 }
 
@@ -212,8 +227,8 @@ func drawRfcLabel(ctx *canvas.Context, face *canvas.FontFace, rfc *RfcLabel) {
 	ctx.DrawText(c.X+labelPadding, c.Y+labelSize.H/2-labelPadding, textBox)
 }
 
-func drawRelationLines(ctx *canvas.Context, rfcIndex RfcIndex, rfc *RfcLabel) {
-	for _, sourceDocId := range rfc.Doc.Updates {
+func drawRelationLines(ctx *canvas.Context, rfcIndex *RfcIndex, rfc *RfcLabel) {
+	for _, sourceDocId := range rfc.Updates {
 		sourceRfc := rfcIndex.Find(sourceDocId)
 		if sourceRfc == nil || !sourceRfc.IsTarget {
 			continue
@@ -221,7 +236,7 @@ func drawRelationLines(ctx *canvas.Context, rfcIndex RfcIndex, rfc *RfcLabel) {
 		drawArrowLine(ctx, sourceRfc, rfc, updatedLineColor)
 	}
 
-	for _, sourceDocId := range rfc.Doc.Obsoletes {
+	for _, sourceDocId := range rfc.Obsoletes {
 		sourceRfc := rfcIndex.Find(sourceDocId)
 		if sourceRfc == nil || !sourceRfc.IsTarget {
 			continue

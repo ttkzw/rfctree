@@ -43,20 +43,24 @@ func NewRfcDoc(data []byte) (*RfcDoc, error) {
 	rfc.Title = strings.TrimSpace(rfc.Title)
 	rfc.Abstract = strings.TrimSpace(rfc.Abstract)
 	rfc.Source = strings.TrimSpace(rfc.Source)
-	rfc.Keywords = *trimSpaceFromSlice(&rfc.Keywords)
-	rfc.Obsoletes = *trimSpaceFromSlice(&rfc.Obsoletes)
-	rfc.ObsoletedBy = *trimSpaceFromSlice(&rfc.ObsoletedBy)
-	rfc.Updates = *trimSpaceFromSlice(&rfc.Updates)
-	rfc.UpdatedBy = *trimSpaceFromSlice(&rfc.UpdatedBy)
-	rfc.SeeAlso = *trimSpaceFromSlice(&rfc.SeeAlso)
+	rfc.Keywords = trimSpaceFromSlice(rfc.Keywords)
+	rfc.Obsoletes = trimSpaceFromSlice(rfc.Obsoletes)
+	rfc.ObsoletedBy = trimSpaceFromSlice(rfc.ObsoletedBy)
+	rfc.Updates = trimSpaceFromSlice(rfc.Updates)
+	rfc.UpdatedBy = trimSpaceFromSlice(rfc.UpdatedBy)
+	rfc.SeeAlso = trimSpaceFromSlice(rfc.SeeAlso)
 
 	return &rfc, nil
 }
 
-func trimSpaceFromSlice(s *[]string) *[]string {
-	trimmed := make([]string, len(*s))
-	for _, v := range *s {
-		trimmed = append(trimmed, strings.TrimSpace(v))
+func trimSpaceFromSlice(s []string) []string {
+	trimmed := make([]string, 0, len(s))
+	for _, v := range s {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		trimmed = append(trimmed, v)
 	}
-	return &trimmed
+	return trimmed
 }
