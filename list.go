@@ -4,8 +4,8 @@ import (
 	"fmt"
 )
 
-func List(rfcsDir, outputFilename string, keywords []string) error {
-	rfcIndex, err := NewRfcIndex(rfcsDir)
+func List(rfcsDir string, targets []*Target, keywords []string, follow bool, excludes []string, outputFilename string) error {
+	rfcIndex, err := NewRfcIndex(rfcsDir, targets, keywords, follow, excludes)
 	if err != nil {
 		return err
 	}
@@ -22,7 +22,7 @@ func List(rfcsDir, outputFilename string, keywords []string) error {
 	// 	}
 	// }
 
-	for _, rfc := range rfcIndex.FindAllByKeywords(keywords) {
+	for _, rfc := range rfcIndex.GetTargets() {
 		fmt.Printf("%s %s\n", rfc.DocId, rfc.Doc.Title)
 	}
 

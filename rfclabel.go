@@ -41,11 +41,15 @@ type RfcLabel struct {
 	Updates     []string
 	UpdatedBy   []string
 
+	Groups []string
+
 	// IsTarget
 	IsTarget bool
 
 	// Position
 	Position Position
+
+	DescendantYRange int
 }
 
 func NewRfcLabel(rfcDoc *RfcDoc) (*RfcLabel, error) {

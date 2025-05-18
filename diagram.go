@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/tdewolff/canvas"
 	"github.com/tdewolff/canvas/renderers"
@@ -28,13 +29,21 @@ var (
 	obsoletedLineColor = color.RGBA{87, 50, 14, 255}
 )
 
-func CreateDiagram(rfcsDir, outputFilename string, keywords []string) error {
-	rfcIndex, err := NewRfcIndex(rfcsDir)
+func CreateDiagram(rfcsDir string, targets []*Target, keywords []string, follow bool, excludes []string, outputFilename string) error {
+	rfcIndex, err := NewRfcIndex(rfcsDir, targets, keywords, follow, excludes)
 	if err != nil {
 		return err
 	}
 
-	targetRfcs := rfcIndex.FindAllByKeywords(keywords)
+	// for debug
+	// for _, rfcIdA := range slices.Sorted(maps.Keys(rfcIndex.relationMap)) {
+	// 	fmt.Printf("%s\n", rfcIdA)
+	// 	for _, rfcIdB := range slices.Sorted(maps.Keys(rfcIndex.relationMap[rfcIdA])) {
+	// 		fmt.Printf("    %s: %f\n", rfcIdB, rfcIndex.relationMap[rfcIdA][rfcIdB])
+	// 	}
+	// }
+
+	targetRfcs := rfcIndex.GetTargets()
 
 	yearMin, yearMax := getYearRange(targetRfcs)
 	xmax := (yearMax - yearMin + 2) * 12
@@ -57,15 +66,18 @@ func CreateDiagram(rfcsDir, outputFilename string, keywords []string) error {
 		drawRelationLines(ctx, rfcIndex, rfc)
 	}
 
-	labelFace := fontFamily.Face(labelFontSize, canvas.White, canvas.FontNormal)
+	whiteLabelFace := fontFamily.Face(labelFontSize, canvas.White, canvas.FontNormal)
+	blackLabelFace := fontFamily.Face(labelFontSize, canvas.Black, canvas.FontNormal)
 	for _, rfc := range targetRfcs {
 		if !rfc.IsTarget {
 			continue
 		}
-
-		drawRfcLabel(ctx, labelFace, rfc)
+		face := whiteLabelFace
+		if rfc.Status == UNKNOWN {
+			face = blackLabelFace
+		}
+		drawRfcLabel(ctx, face, rfc)
 	}
-	//ctx.Close()
 
 	if err := renderers.Write(outputFilename, rfcCanvas, canvas.DPMM(10.0)); err != nil {
 		panic(err)
@@ -105,9 +117,11 @@ func arrangePosition(rfcIndex *RfcIndex, rfcs []*RfcLabel, yearMin, xmax, ymax i
 		cell[x] = make([]string, ymax)
 	}
 
+	rfcIdsOnX := make(map[int][]string, xmax)
 	originMonth := (yearMin - yearOfOrigin) * 12
 	for _, rfc := range rfcs {
 		rfc.Position.X = rfc.PubDateInMonth - originMonth
+		rfcIdsOnX[rfc.Position.X] = append(rfcIdsOnX[rfc.Position.X], rfc.DocId)
 	}
 
 	slices.SortFunc(rfcs, func(a, b *RfcLabel) int {
@@ -115,13 +129,21 @@ func arrangePosition(rfcIndex *RfcIndex, rfcs []*RfcLabel, yearMin, xmax, ymax i
 	})
 
 	arrangement := NewArrangement(xmax, ymax)
-	for _, rfc := range rfcs {
-		candidate := arrangement.FindCandidatePositions(rfc.Position.X)
-		//for _, docId := range rfc.Obsoletes {
-		//	rfcIndex.Find(docId).Position.Y
-		//}
-		rfc.Position.Y = candidate[0]
-		arrangement.Set(rfc.Position, rfc.DocId)
+	for x, rfcIds := range rfcIdsOnX {
+		s := 0
+		for _, rfcId := range rfcIds {
+			s = s + rfcIndex.Find(rfcId).DescendantYRange
+		}
+		y := ymax/2 + s/2
+		for _, rfcId := range rfcIds {
+			rfc := rfcIndex.Find(rfcId)
+			y = y - rfc.DescendantYRange/2
+			if !arrangement.IsEmpty(x, y) {
+				y = y - 1
+			}
+			rfc.Position.Y = y
+			arrangement.Set(rfc.Position, rfc.DocId)
+		}
 	}
 }
 
@@ -257,5 +279,9 @@ func drawArrowLine(ctx *canvas.Context, sourceRfc, destRfc *RfcLabel, lineColor 
 	endingMarker := polyline.Add(0, 0).Add(-1.5, -1.0).Add(-1.5, 1.0).Close().ToPath()
 	line := canvas.Line(dest.X-(source.X+labelSize.W), dest.Y-source.Y)
 	markers := line.Markers(nil, nil, endingMarker, true)
+	if len(markers) == 0 {
+		time.Sleep(time.Millisecond * 10)
+		// Workaround for bug that causes markers to be empty
+	}
 	ctx.DrawPath(source.X+labelSize.W, source.Y, line, markers[0])
 }

@@ -8,14 +8,14 @@ import (
 	"strings"
 )
 
-func ListKeyword(rfcsDir string, keywords []string) error {
-	rfcIndex, err := NewRfcIndex(rfcsDir)
+func ListKeyword(rfcsDir string, targets []*Target, keywords []string, follow bool, excludes []string) error {
+	rfcIndex, err := NewRfcIndex(rfcsDir, targets, keywords, follow, excludes)
 	if err != nil {
 		return err
 	}
 
 	keywordMap := make(map[string]int, len(keywords))
-	for _, rfc := range rfcIndex.FindAllByKeywords(keywords) {
+	for _, rfc := range rfcIndex.GetTargets() {
 		for _, keyword := range rfc.Keywords {
 			if keyword == "" {
 				continue

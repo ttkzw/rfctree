@@ -40,18 +40,3 @@ func (a *Arrangement) IsEmpty(x, y int) bool {
 	}
 	return true
 }
-
-func (a *Arrangement) FindCandidatePositions(x int) []int {
-	candidates := make([]int, 0, a.h)
-
-	// Middle positions are high priority.
-	for j := range a.h / 2 {
-		if a.IsEmpty(x, a.h/2-j-1) {
-			candidates = append(candidates, a.h/2-j-1)
-		}
-		if a.IsEmpty(x, a.h/2+j) {
-			candidates = append(candidates, a.h/2+j)
-		}
-	}
-	return candidates
-}
