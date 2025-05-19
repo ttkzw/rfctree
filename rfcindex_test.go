@@ -23,10 +23,10 @@ func TestNewRfcIndex(t *testing.T) {
 	assert.Nil(err)
 
 	// follow=false
-	//rfcIndex.SetTargets([]*rfctree.Target{{DocId: "RFC0821"}}, []string{}, false, []string{})
-	//docIds = rfcLabelsToDocIds(rfcIndex.GetTargets())
-	//assert.Equal([]string{"RFC0821"}, docIds)
-	//rfcIndex.Clear()
+	rfcIndex.SetTargets([]*rfctree.Target{{DocId: "RFC0821"}}, []string{}, false, []string{})
+	docIds = rfcLabelsToDocIds(rfcIndex.GetTargets())
+	assert.Equal([]string{"RFC0821"}, docIds)
+	rfcIndex.Clear()
 
 	// follow=true
 	rfcIndex.SetTargets([]*rfctree.Target{{DocId: "RFC0821"}}, []string{}, true, []string{})

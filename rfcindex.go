@@ -13,9 +13,9 @@ import (
 )
 
 type RfcIndex struct {
-	rfcMap             map[string]*RfcLabel
-	excludeMap         map[string]bool
-	connectionScoreMap map[string]map[string]*ConnectionScore
+	rfcMap           map[string]*RfcLabel
+	excludeMap       map[string]bool
+	relationScoreMap map[string]map[string]*RelationScore
 }
 
 const defaultRfcIndexSize = 10000
@@ -58,15 +58,15 @@ func NewRfcIndex(rfcsDir string, targets []*Target, keywords []string, follow bo
 	}
 
 	excludeMap := make(map[string]bool)
-	relationMap := make(map[string]map[string]*ConnectionScore)
+	relationMap := make(map[string]map[string]*RelationScore)
 
 	rfcIndex := RfcIndex{
-		rfcMap:             rfcMap,
-		excludeMap:         excludeMap,
-		connectionScoreMap: relationMap,
+		rfcMap:           rfcMap,
+		excludeMap:       excludeMap,
+		relationScoreMap: relationMap,
 	}
 
-	rfcIndex.buildConnectionScore()
+	rfcIndex.buildRelationScore()
 
 	rfcIndex.SetTargets(targets, keywords, follow, excludes)
 
@@ -108,7 +108,7 @@ func (r *RfcIndex) SetTargets(targets []*Target, keywords []string, follow bool,
 				continue
 			}
 
-			r.followConnection(rfc.DocId)
+			r.followRelation(rfc.DocId)
 		}
 	}
 
@@ -118,7 +118,7 @@ func (r *RfcIndex) SetTargets(targets []*Target, keywords []string, follow bool,
 
 }
 
-func (r *RfcIndex) followConnection(rfcId string) {
+func (r *RfcIndex) followRelation(rfcId string) {
 	rfc := r.Find(rfcId)
 
 	for _, id := range rfc.Obsoletes {
@@ -129,7 +129,7 @@ func (r *RfcIndex) followConnection(rfcId string) {
 			continue
 		}
 		r.Find(id).IsTarget = true
-		r.followConnection(id)
+		r.followRelation(id)
 	}
 
 	for _, id := range rfc.ObsoletedBy {
@@ -140,7 +140,7 @@ func (r *RfcIndex) followConnection(rfcId string) {
 			continue
 		}
 		r.Find(id).IsTarget = true
-		r.followConnection(id)
+		r.followRelation(id)
 	}
 
 	for _, id := range rfc.Updates {
@@ -150,11 +150,11 @@ func (r *RfcIndex) followConnection(rfcId string) {
 		if r.Find(id).IsTarget {
 			continue
 		}
-		if r.getConnectionScore(rfcId, id).Value() < 1.1 {
+		if r.getRelationScoreValue(id, rfcId) < 3.0 {
 			continue
 		}
 		r.Find(id).IsTarget = true
-		r.followConnection(id)
+		r.followRelation(id)
 	}
 
 	for _, id := range rfc.UpdatedBy {
@@ -164,19 +164,19 @@ func (r *RfcIndex) followConnection(rfcId string) {
 		if r.Find(id).IsTarget {
 			continue
 		}
-		if r.getConnectionScore(rfcId, id).Value() < 1.1 {
+		if r.getRelationScoreValue(rfcId, id) < 3.0 {
 			continue
 		}
 		r.Find(id).IsTarget = true
-		r.followConnection(id)
+		r.followRelation(id)
 	}
 }
 
-func (r *RfcIndex) buildConnectionScore() {
+func (r *RfcIndex) buildRelationScore() {
 	const (
 		obsoletesScore                = 10.0
 		updatesBaseScore              = 2.0
-		updatesSharedScore            = 6.0
+		updatesSharedScore            = 5.0
 		obsoletesSiblingBaseScore     = 1.0
 		obsoletesSiblingSharedScore   = 2.0
 		obsoletedBySiblingBaseScore   = 1.0
@@ -188,18 +188,14 @@ func (r *RfcIndex) buildConnectionScore() {
 	)
 
 	for _, rfc := range r.Values() {
-		if !rfc.IsTarget {
-			continue
-		}
-
 		for _, rfcId := range rfc.Updates {
-			connectionScore := r.getConnectionScore(rfcId, rfc.DocId)
-			connectionScore.updates = updatesBaseScore + updatesSharedScore/float64(len(r.rfcMap[rfcId].UpdatedBy))
+			relationScore := r.getRelationScore(rfcId, rfc.DocId)
+			relationScore.updates = updatesBaseScore + updatesSharedScore/float64(len(r.rfcMap[rfcId].UpdatedBy))
 		}
 
 		for _, rfcId := range rfc.Obsoletes {
-			connectionScore := r.getConnectionScore(rfcId, rfc.DocId)
-			connectionScore.obsoletes = obsoletesScore
+			relationScore := r.getRelationScore(rfcId, rfc.DocId)
+			relationScore.obsoletes = obsoletesScore
 		}
 
 		if len(rfc.Obsoletes) > 1 {
@@ -208,8 +204,8 @@ func (r *RfcIndex) buildConnectionScore() {
 					if rfcIdB <= rfcIdA {
 						continue
 					}
-					connectionScore := r.getConnectionScore(rfcIdA, rfcIdB)
-					connectionScore.obsoletesSibling = obsoletesSiblingBaseScore + obsoletesSiblingSharedScore/float64(len(rfc.Obsoletes))
+					relationScore := r.getRelationScore(rfcIdA, rfcIdB)
+					relationScore.obsoletesSibling = obsoletesSiblingBaseScore + obsoletesSiblingSharedScore/float64(len(rfc.Obsoletes))
 				}
 			}
 		}
@@ -220,8 +216,8 @@ func (r *RfcIndex) buildConnectionScore() {
 					if rfcIdB <= rfcIdA {
 						continue
 					}
-					connectionScore := r.getConnectionScore(rfcIdA, rfcIdB)
-					connectionScore.obsoletedBySibling = obsoletedBySiblingBaseScore + obsoletedBySiblingSharedScore/float64(len(rfc.ObsoletedBy))
+					relationScore := r.getRelationScore(rfcIdA, rfcIdB)
+					relationScore.obsoletedBySibling = obsoletedBySiblingBaseScore + obsoletedBySiblingSharedScore/float64(len(rfc.ObsoletedBy))
 				}
 			}
 		}
@@ -232,8 +228,8 @@ func (r *RfcIndex) buildConnectionScore() {
 					if rfcIdB <= rfcIdA {
 						continue
 					}
-					connectionScore := r.getConnectionScore(rfcIdA, rfcIdB)
-					connectionScore.updatesSibling = updatesSiblingBaseScore + updatesSiblingSharedScore/float64(len(rfc.Updates))
+					relationScore := r.getRelationScore(rfcIdA, rfcIdB)
+					relationScore.updatesSibling = updatesSiblingBaseScore + updatesSiblingSharedScore/float64(len(rfc.Updates))
 				}
 			}
 		}
@@ -244,15 +240,15 @@ func (r *RfcIndex) buildConnectionScore() {
 					if rfcIdB <= rfcIdA {
 						continue
 					}
-					connectionScore := r.getConnectionScore(rfcIdA, rfcIdB)
-					connectionScore.updatedBySibling = updatedBySiblingBaseScore + updatedBySiblingSharedScore/float64(len(rfc.UpdatedBy))
+					relationScore := r.getRelationScore(rfcIdA, rfcIdB)
+					relationScore.updatedBySibling = updatedBySiblingBaseScore + updatedBySiblingSharedScore/float64(len(rfc.UpdatedBy))
 				}
 			}
 		}
 	}
 }
 
-func (r *RfcIndex) getConnectionScore(rfcIdA, rfcIdB string) *ConnectionScore {
+func (r *RfcIndex) getRelationScore(rfcIdA, rfcIdB string) *RelationScore {
 	var elderRfcId, youngerRfcId string
 	if rfcIdA < rfcIdB {
 		elderRfcId = rfcIdA
@@ -266,20 +262,20 @@ func (r *RfcIndex) getConnectionScore(rfcIdA, rfcIdB string) *ConnectionScore {
 		youngerRfcId = rfcIdA
 	}
 
-	connectionScoreMap, ok := r.connectionScoreMap[elderRfcId]
+	relationScoreMap, ok := r.relationScoreMap[elderRfcId]
 	if !ok {
-		connectionScoreMap = make(map[string]*ConnectionScore)
-		r.connectionScoreMap[elderRfcId] = connectionScoreMap
+		relationScoreMap = make(map[string]*RelationScore)
+		r.relationScoreMap[elderRfcId] = relationScoreMap
 	}
-	connectionScore, ok := connectionScoreMap[youngerRfcId]
+	relationScore, ok := relationScoreMap[youngerRfcId]
 	if !ok {
-		connectionScore = &ConnectionScore{}
-		connectionScoreMap[youngerRfcId] = connectionScore
+		relationScore = &RelationScore{}
+		relationScoreMap[youngerRfcId] = relationScore
 	}
-	return connectionScore
+	return relationScore
 }
 
-func (r *RfcIndex) getConnectionScoreValue(rfcIdA, rfcIdB string) float64 {
+func (r *RfcIndex) getRelationScoreValue(rfcIdA, rfcIdB string) float64 {
 	var elderRfcId, youngerRfcId string
 	if rfcIdA < rfcIdB {
 		elderRfcId = rfcIdA
@@ -293,15 +289,15 @@ func (r *RfcIndex) getConnectionScoreValue(rfcIdA, rfcIdB string) float64 {
 		youngerRfcId = rfcIdA
 	}
 
-	connectionScoreMap, ok := r.connectionScoreMap[elderRfcId]
+	relationScoreMap, ok := r.relationScoreMap[elderRfcId]
 	if !ok {
 		return 0
 	}
-	connectionScore, ok := connectionScoreMap[youngerRfcId]
+	relationScore, ok := relationScoreMap[youngerRfcId]
 	if !ok {
 		return 0
 	}
-	return connectionScore.Value()
+	return relationScore.Value()
 }
 
 func (r *RfcIndex) Find(docId string) *RfcLabel {
@@ -314,7 +310,7 @@ func (r *RfcIndex) IsExcluded(docId string) bool {
 }
 
 func (r *RfcIndex) getDescendantYRange(rfcId string) int {
-	relationScoreMap, ok := r.connectionScoreMap[rfcId]
+	relationScoreMap, ok := r.relationScoreMap[rfcId]
 	if !ok {
 		return 0
 	}
@@ -364,7 +360,7 @@ func (r *RfcIndex) Clear() {
 		}
 	}
 	r.excludeMap = make(map[string]bool)
-	r.connectionScoreMap = make(map[string]map[string]*ConnectionScore)
+	r.relationScoreMap = make(map[string]map[string]*RelationScore)
 }
 
 func (r *RfcIndex) Exist(docId string) bool {
@@ -386,7 +382,7 @@ func (r *RfcIndex) Values() []*RfcLabel {
 	return rfcs
 }
 
-type ConnectionScore struct {
+type RelationScore struct {
 	obsoletes          float64
 	updates            float64
 	obsoletesSibling   float64
@@ -395,7 +391,7 @@ type ConnectionScore struct {
 	updatedBySibling   float64
 }
 
-func (r *ConnectionScore) Value() float64 {
+func (r *RelationScore) Value() float64 {
 	return r.obsoletes + r.updates + r.obsoletesSibling + r.obsoletedBySibling + r.updatesSibling + r.updatedBySibling
 }
 

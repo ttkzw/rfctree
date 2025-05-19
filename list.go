@@ -10,6 +10,14 @@ func List(rfcsDir string, targets []*Target, keywords []string, follow bool, exc
 		return err
 	}
 
+	// for debug
+	// for _, rfcIdA := range slices.Sorted(maps.Keys(rfcIndex.relationScoreMap)) {
+	// 	fmt.Printf("%s\n", rfcIdA)
+	// 	for _, rfcIdB := range slices.Sorted(maps.Keys(rfcIndex.relationScoreMap[rfcIdA])) {
+	// 		fmt.Printf("    %s: %f\n", rfcIdB, rfcIndex.relationScoreMap[rfcIdA][rfcIdB])
+	// 	}
+	// }
+
 	// for _, docId := range rfcIndex.Keys() {
 	// 	rfc := rfcIndex.Find(docId)
 	// 	for _, v := range rfc.Doc.Format {

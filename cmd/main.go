@@ -63,7 +63,7 @@ var (
 
 	flagFollow = &cli.BoolFlag{
 		Name:  flagNameFollow,
-		Usage: "Follow the connection between RFCs.",
+		Usage: "Follow the relations between RFCs.",
 		Value: false,
 	}
 
