@@ -101,7 +101,7 @@ func main() {
 						return err
 					}
 
-					keywords, err := cliutil.GetKeywords(cmd.String(flagNameExcludeFrom), cmd.StringSlice(flagNameKeyword))
+					keywords, err := cliutil.GetKeywords(cmd.String(flagNameKeywordFrom), cmd.StringSlice(flagNameKeyword))
 					if err != nil {
 						return err
 					}
@@ -133,7 +133,7 @@ func main() {
 						return err
 					}
 
-					keywords, err := cliutil.GetKeywords(cmd.String(flagNameExcludeFrom), cmd.StringSlice(flagNameKeyword))
+					keywords, err := cliutil.GetKeywords(cmd.String(flagNameKeywordFrom), cmd.StringSlice(flagNameKeyword))
 					if err != nil {
 						return err
 					}
@@ -166,7 +166,7 @@ func main() {
 						return err
 					}
 
-					keywords, err := cliutil.GetKeywords(cmd.String(flagNameExcludeFrom), cmd.StringSlice(flagNameKeyword))
+					keywords, err := cliutil.GetKeywords(cmd.String(flagNameKeywordFrom), cmd.StringSlice(flagNameKeyword))
 					if err != nil {
 						return err
 					}
