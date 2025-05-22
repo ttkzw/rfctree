@@ -123,7 +123,7 @@ func (r *RfcIndex) SetTargets(targets []*Target, keywords []string, follow bool,
 
 func (r *RfcIndex) GetTargets() []*RfcLabel {
 	var rfcs []*RfcLabel
-	for _, rfc := range r.Values() {
+	for _, rfc := range r.ValuesSortedByPubDate() {
 		if rfc.IsTarget {
 			rfcs = append(rfcs, rfc)
 		}
@@ -203,7 +203,21 @@ func (r *RfcIndex) Exist(docId string) bool {
 	return ok
 }
 
+// Keys() returns a slice of DocId.
+func (r *RfcIndex) Keys() []string {
+	return slices.Sorted(maps.Keys(r.rfcMap))
+}
+
+// Values returns a slice of RfcLabel sorted by DocIde.
 func (r *RfcIndex) Values() []*RfcLabel {
+	rfcs := slices.SortedFunc(maps.Values(r.rfcMap), func(a, b *RfcLabel) int {
+		return cmp.Compare(a.DocId, b.DocId)
+	})
+	return rfcs
+}
+
+// ValuesSortedByPubDate returns a slice of RfcLabel sorted by DocId and Publish Date.
+func (r *RfcIndex) ValuesSortedByPubDate() []*RfcLabel {
 	rfcs := slices.SortedFunc(maps.Values(r.rfcMap), func(a, b *RfcLabel) int {
 		return cmp.Compare(a.DocId, b.DocId)
 	})
@@ -251,7 +265,7 @@ func (r *RfcIndex) buildRelationScore() {
 		updatedBySiblingSharedScore   = 20
 	)
 
-	for _, rfc := range r.Values() {
+	for _, rfc := range r.ValuesSortedByPubDate() {
 		for _, docId := range rfc.Updates {
 			relationScore := r.getRelationScore(docId, rfc.DocId, true)
 			if relationScore == nil {
@@ -387,12 +401,12 @@ func (r *RfcIndex) getDescendantYRange(docId string) int {
 		return !r.Find(a).IsTarget
 	})
 
+	docIds = slices.Insert(docIds, 0, docId)
 	// FIXME: relationMapの依存が逆のものがある　RFC3468　RFC3472
-	//first := r.Find(docId).PubDateInMonth
-	first := slices.Min([]int{r.Find(docId).PubDateInMonth, r.Find(docIds[0]).PubDateInMonth})
+	first := r.Find(docId).PubDateInMonth
+	//first := slices.Min([]int{r.Find(docId).PubDateInMonth, r.Find(docIds[0]).PubDateInMonth})
 	last := r.Find(docIds[len(docIds)-1]).PubDateInMonth
 
-	docIds = slices.Insert(docIds, 0, docId)
 	n := make([]int, last-first+1+int(labelSize.W/cellSize.W))
 	for _, id := range docIds {
 		m := r.Find(id).PubDateInMonth - first

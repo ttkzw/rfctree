@@ -32,30 +32,8 @@ func NewArrangement() Arrangement {
 	}
 }
 
-func getMinYear(rfcs []*RfcLabel) int {
-	rfc := slices.MinFunc(rfcs, func(a, b *RfcLabel) int {
-		return cmp.Compare(a.PubYear, b.PubYear)
-	})
-	return rfc.PubYear
-}
-
-func getMaxYear(rfcs []*RfcLabel) int {
-	rfc := slices.MaxFunc(rfcs, func(a, b *RfcLabel) int {
-		return cmp.Compare(a.PubYear, b.PubYear)
-	})
-	return rfc.PubYear
-}
-
 func (a *Arrangement) Arrange(rfcIndex *RfcIndex, rfcs []*RfcLabel) {
-	minYear := getMinYear(rfcs)
-	maxYear := getMaxYear(rfcs)
-	a.YearOfOrigin = minYear
-	a.W = (maxYear - minYear + 2) * 12
-	a.H = len(rfcs)
-	a.cell = make([][]ArrangementValue, a.W)
-	for x := range a.W {
-		a.cell[x] = make([]ArrangementValue, a.H)
-	}
+	a.initializeToTargets(rfcs)
 
 	docIdsOnX := make(map[int][]string, a.W)
 	originInMonth := (a.YearOfOrigin - yearOfOrigin) * 12
@@ -63,10 +41,6 @@ func (a *Arrangement) Arrange(rfcIndex *RfcIndex, rfcs []*RfcLabel) {
 		rfc.Position.X = rfc.PubDateInMonth - originInMonth
 		docIdsOnX[rfc.Position.X] = append(docIdsOnX[rfc.Position.X], rfc.DocId)
 	}
-
-	slices.SortFunc(rfcs, func(a, b *RfcLabel) int {
-		return cmp.Compare(a.Position.X, b.Position.X)
-	})
 
 	for x, docIds := range docIdsOnX {
 		s := 0
@@ -84,10 +58,32 @@ func (a *Arrangement) Arrange(rfcIndex *RfcIndex, rfcs []*RfcLabel) {
 			a.Set(rfc.Position, rfc.DocId)
 		}
 	}
-	a.Reallocate(rfcIndex)
+
+	newOrigin, w, h := a.getResizeInfo()
+	a.reallocate(rfcIndex, newOrigin, w, h)
 }
 
-func (a *Arrangement) Reallocate(rfcIndex *RfcIndex) {
+func (a *Arrangement) initializeToTargets(rfcs []*RfcLabel) {
+	minYearRfc := slices.MinFunc(rfcs, func(a, b *RfcLabel) int {
+		return cmp.Compare(a.PubYear, b.PubYear)
+	})
+	minYear := minYearRfc.PubYear
+
+	maxYearRfc := slices.MaxFunc(rfcs, func(a, b *RfcLabel) int {
+		return cmp.Compare(a.PubYear, b.PubYear)
+	})
+	maxYear := maxYearRfc.PubYear
+
+	a.YearOfOrigin = minYear
+	a.W = (maxYear - minYear + 2) * 12
+	a.H = len(rfcs)
+	a.cell = make([][]ArrangementValue, a.W)
+	for x := range a.W {
+		a.cell[x] = make([]ArrangementValue, a.H)
+	}
+}
+
+func (a *Arrangement) getResizeInfo() (newOrigin Position, w, h int) {
 	ymins := make([]int, 0, a.H)
 	ymaxs := make([]int, 0, a.H)
 	var x1, x2 int
@@ -124,22 +120,27 @@ func (a *Arrangement) Reallocate(rfcIndex *RfcIndex) {
 		ymax = slices.Max(ymaxs)
 	}
 
-	w := (xmax/12 - xmin/12 + 2) * 12
-	h := ymax - ymin + 1
+	w = (xmax/12 - xmin/12 + 2) * 12
+	h = ymax - ymin + 1
+	newOrigin = Position{X: xmin, Y: ymin}
+	return newOrigin, w, h
+}
+
+func (a *Arrangement) reallocate(rfcIndex *RfcIndex, newOrigin Position, w, h int) {
 	cell := make([][]ArrangementValue, w)
 	for x := range w {
 		cell[x] = make([]ArrangementValue, h)
 	}
 
 	for x := range w {
-		if a.W <= xmin+x {
+		if a.W <= newOrigin.X+x {
 			break
 		}
 		for y := range h {
-			if a.H <= ymin+y {
+			if a.H <= newOrigin.Y+y {
 				break
 			}
-			v := a.cell[xmin+x][ymin+y]
+			v := a.cell[newOrigin.X+x][newOrigin.Y+y]
 			if v.DocId != "" {
 				rfc := rfcIndex.Find(v.DocId)
 				rfc.Position.X = x
