@@ -55,16 +55,6 @@ func TestRfcIndexExist(t *testing.T) {
 	assert.False(rfcIndex.Exist(""))
 }
 
-func TestRfcIndexKeys(t *testing.T) {
-	assert := assert.New(t)
-
-	excludes, _ := cliutil.GetExcludes("testdata/exclude.txt", []string{})
-	rfcIndex, err := rfctree.NewRfcIndex("testdata/rfcdata", []*rfctree.Target{}, []string{}, false, excludes)
-	assert.Nil(err)
-
-	assert.Equal([]string{"RFC0821", "RFC0822", "RFC0974"}, rfcIndex.Keys()[:3])
-}
-
 func TestRfcIndexValues(t *testing.T) {
 	assert := assert.New(t)
 

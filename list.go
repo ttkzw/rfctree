@@ -11,10 +11,10 @@ func List(rfcsDir string, targets []*Target, keywords []string, follow bool, exc
 	}
 
 	// for debug
-	// for _, rfcIdA := range slices.Sorted(maps.Keys(rfcIndex.relationScoreMap)) {
-	// 	fmt.Printf("%s\n", rfcIdA)
-	// 	for _, rfcIdB := range slices.Sorted(maps.Keys(rfcIndex.relationScoreMap[rfcIdA])) {
-	// 		fmt.Printf("    %s: %f\n", rfcIdB, rfcIndex.relationScoreMap[rfcIdA][rfcIdB])
+	// for _, docIdA := range slices.Sorted(maps.Keys(rfcIndex.relationScoreMap)) {
+	// 	fmt.Printf("%s\n", docIdA)
+	// 	for _, docIdB := range slices.Sorted(maps.Keys(rfcIndex.relationScoreMap[docIdA])) {
+	// 		fmt.Printf("    %s: %d\n", docIdB, rfcIndex.relationScoreMap[docIdA][docIdB])
 	// 	}
 	// }
 

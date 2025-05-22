@@ -1,10 +1,12 @@
 #!/bin/sh
+curdir=$(dirname "$0")
 
 go build -o rfctree cmd/main.go
 ./rfctree diagram \
   --target "RFC1034,RFC1035" \
-  --exclude-from exclude.txt \
-  --output ./examples/dns/DNS-RFC.png
+  --follow \
+  --exclude-from "${curdir}/exclude.txt" \
+  --output "${curdir}/DNS-RFC.png"
 
 #   -k DNS -k DOMAIN -k 'DOMAIN NAME SYSTEM' -k 'DOMAIN NAME SPACE' \
 #   -k DNSSEC -k 'DNS SECURITY' -k 'DNS-SECEXT' \

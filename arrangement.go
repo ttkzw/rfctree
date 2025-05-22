@@ -11,10 +11,10 @@ type ArrangementValue struct {
 }
 
 type Arrangement struct {
-	cell       [][]ArrangementValue
-	w          int
-	h          int
-	originYear int
+	cell         [][]ArrangementValue
+	W            int
+	H            int
+	YearOfOrigin int
 }
 
 func NewArrangement() Arrangement {
@@ -27,37 +27,55 @@ func NewArrangement() Arrangement {
 
 	return Arrangement{
 		cell: cell,
-		w:    w,
-		h:    h,
+		W:    w,
+		H:    h,
 	}
 }
 
-func (a *Arrangement) Arrange(rfcIndex *RfcIndex, rfcs []*RfcLabel) {
-	yearMin, yearMax := getYearRange(rfcs)
-	a.originYear = yearMin
-	xmax := (yearMax - yearMin + 2) * 12
-	ymax := len(rfcs)
-	a.Reallocate(rfcIndex, xmax, ymax, false)
+func getMinYear(rfcs []*RfcLabel) int {
+	rfc := slices.MinFunc(rfcs, func(a, b *RfcLabel) int {
+		return cmp.Compare(a.PubYear, b.PubYear)
+	})
+	return rfc.PubYear
+}
 
-	rfcIdsOnX := make(map[int][]string, xmax)
-	originMonth := (yearMin - yearOfOrigin) * 12
+func getMaxYear(rfcs []*RfcLabel) int {
+	rfc := slices.MaxFunc(rfcs, func(a, b *RfcLabel) int {
+		return cmp.Compare(a.PubYear, b.PubYear)
+	})
+	return rfc.PubYear
+}
+
+func (a *Arrangement) Arrange(rfcIndex *RfcIndex, rfcs []*RfcLabel) {
+	minYear := getMinYear(rfcs)
+	maxYear := getMaxYear(rfcs)
+	a.YearOfOrigin = minYear
+	a.W = (maxYear - minYear + 2) * 12
+	a.H = len(rfcs)
+	a.cell = make([][]ArrangementValue, a.W)
+	for x := range a.W {
+		a.cell[x] = make([]ArrangementValue, a.H)
+	}
+
+	docIdsOnX := make(map[int][]string, a.W)
+	originInMonth := (a.YearOfOrigin - yearOfOrigin) * 12
 	for _, rfc := range rfcs {
-		rfc.Position.X = rfc.PubDateInMonth - originMonth
-		rfcIdsOnX[rfc.Position.X] = append(rfcIdsOnX[rfc.Position.X], rfc.DocId)
+		rfc.Position.X = rfc.PubDateInMonth - originInMonth
+		docIdsOnX[rfc.Position.X] = append(docIdsOnX[rfc.Position.X], rfc.DocId)
 	}
 
 	slices.SortFunc(rfcs, func(a, b *RfcLabel) int {
 		return cmp.Compare(a.Position.X, b.Position.X)
 	})
 
-	for x, rfcIds := range rfcIdsOnX {
+	for x, docIds := range docIdsOnX {
 		s := 0
-		for _, rfcId := range rfcIds {
-			s = s + rfcIndex.Find(rfcId).DescendantYRange
+		for _, docId := range docIds {
+			s = s + rfcIndex.Find(docId).DescendantYRange
 		}
-		y := ymax/2 + s/2
-		for _, rfcId := range rfcIds {
-			rfc := rfcIndex.Find(rfcId)
+		y := a.H/2 + s/2
+		for _, docId := range docIds {
+			rfc := rfcIndex.Find(docId)
 			y = y - rfc.DescendantYRange/2
 			if !a.IsEmpty(x, y) {
 				y = y - 1
@@ -66,16 +84,16 @@ func (a *Arrangement) Arrange(rfcIndex *RfcIndex, rfcs []*RfcLabel) {
 			a.Set(rfc.Position, rfc.DocId)
 		}
 	}
-	a.Reallocate(rfcIndex, xmax, ymax, true)
+	a.Reallocate(rfcIndex)
 }
 
-func (a *Arrangement) Reallocate(rfcIndex *RfcIndex, w, h int, fit bool) {
-	ymins := make([]int, 0, a.h)
-	ymaxs := make([]int, 0, a.h)
+func (a *Arrangement) Reallocate(rfcIndex *RfcIndex) {
+	ymins := make([]int, 0, a.H)
+	ymaxs := make([]int, 0, a.H)
 	var x1, x2 int
 	for x, arrangementValues := range a.cell {
 		var y1, y2 int
-		for y := 0; y < a.h; y++ {
+		for y := 0; y < a.H; y++ {
 			if arrangementValues[y].DocId != "" {
 				if y1 == 0 {
 					y1 = y
@@ -106,22 +124,19 @@ func (a *Arrangement) Reallocate(rfcIndex *RfcIndex, w, h int, fit bool) {
 		ymax = slices.Max(ymaxs)
 	}
 
-	if fit {
-		w = (xmax/12 - xmin/12 + 2) * 12
-		h = ymax - ymin + 1
-	}
-
+	w := (xmax/12 - xmin/12 + 2) * 12
+	h := ymax - ymin + 1
 	cell := make([][]ArrangementValue, w)
 	for x := range w {
 		cell[x] = make([]ArrangementValue, h)
 	}
 
 	for x := range w {
-		if a.w <= xmin+x {
+		if a.W <= xmin+x {
 			break
 		}
 		for y := range h {
-			if a.h <= ymin+y {
+			if a.H <= ymin+y {
 				break
 			}
 			v := a.cell[xmin+x][ymin+y]
@@ -135,8 +150,8 @@ func (a *Arrangement) Reallocate(rfcIndex *RfcIndex, w, h int, fit bool) {
 	}
 
 	a.cell = cell
-	a.w = w
-	a.h = h
+	a.W = w
+	a.H = h
 }
 
 func (a *Arrangement) Cell(p Position) (docId string) {
@@ -154,14 +169,4 @@ func (a *Arrangement) IsEmpty(x, y int) bool {
 		}
 	}
 	return true
-}
-
-func getYearRange(rfcs []*RfcLabel) (minYear, maxYear int) {
-	minYearRfc := slices.MinFunc(rfcs, func(a, b *RfcLabel) int {
-		return cmp.Compare(a.PubYear, b.PubYear)
-	})
-	maxYearRfc := slices.MaxFunc(rfcs, func(a, b *RfcLabel) int {
-		return cmp.Compare(a.PubYear, b.PubYear)
-	})
-	return minYearRfc.PubYear, maxYearRfc.PubYear
 }

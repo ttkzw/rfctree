@@ -9,7 +9,7 @@ import (
 )
 
 var cellSize = canvas.Size{W: 2.0, H: 20.0}
-var labelSize = canvas.Size{W: 24.0, H: 14.0}
+var labelSize = canvas.Size{W: 23.0, H: 14.0}
 
 const (
 	axisFontSize  = 12.0
@@ -33,10 +33,10 @@ func CreateDiagram(rfcsDir string, targets []*Target, keywords []string, follow 
 	}
 
 	// for debug
-	// for _, rfcIdA := range slices.Sorted(maps.Keys(rfcIndex.relationMap)) {
-	// 	fmt.Printf("%s\n", rfcIdA)
-	// 	for _, rfcIdB := range slices.Sorted(maps.Keys(rfcIndex.relationMap[rfcIdA])) {
-	// 		fmt.Printf("    %s: %f\n", rfcIdB, rfcIndex.relationMap[rfcIdA][rfcIdB])
+	// for _, docIdA := range slices.Sorted(maps.Keys(rfcIndex.relationScoreMap)) {
+	// 	fmt.Printf("%s\n", docIdA)
+	// 	for _, docIdB := range slices.Sorted(maps.Keys(rfcIndex.relationScoreMap[docIdA])) {
+	// 		fmt.Printf("    %s: %d\n", docIdB, rfcIndex.relationScoreMap[docIdA][docIdB])
 	// 	}
 	// }
 
@@ -45,7 +45,7 @@ func CreateDiagram(rfcsDir string, targets []*Target, keywords []string, follow 
 	arrangement := NewArrangement()
 	arrangement.Arrange(rfcIndex, targetRfcs)
 
-	rfcCanvas := canvas.New(float64(arrangement.w)*cellSize.W+canvasMargin*2, float64(arrangement.h)*cellSize.H+canvasMargin*2)
+	rfcCanvas := canvas.New(float64(arrangement.W)*cellSize.W+canvasMargin*2, float64(arrangement.H)*cellSize.H+canvasMargin*2)
 	ctx := canvas.NewContext(rfcCanvas)
 	drawBackground(rfcCanvas, ctx)
 
@@ -106,7 +106,7 @@ func drawAxisLine(ctx *canvas.Context, face *canvas.FontFace, arrangement Arrang
 	// bottom line
 	{
 		left := positionToCoordinate(Position{X: 0, Y: 0})
-		right := positionToCoordinate(Position{X: arrangement.w, Y: 0})
+		right := positionToCoordinate(Position{X: arrangement.W, Y: 0})
 		ctx.MoveTo(left.X, left.Y-cellSize.H/2)
 		ctx.LineTo(right.X, right.Y-cellSize.H/2)
 		ctx.Stroke()
@@ -114,18 +114,18 @@ func drawAxisLine(ctx *canvas.Context, face *canvas.FontFace, arrangement Arrang
 
 	// top line
 	{
-		left := positionToCoordinate(Position{X: 0, Y: arrangement.h - 1})
-		right := positionToCoordinate(Position{X: arrangement.w, Y: arrangement.h - 1})
+		left := positionToCoordinate(Position{X: 0, Y: arrangement.H - 1})
+		right := positionToCoordinate(Position{X: arrangement.W, Y: arrangement.H - 1})
 		ctx.MoveTo(left.X, left.Y+cellSize.H/2)
 		ctx.LineTo(right.X, right.Y+cellSize.H/2)
 		ctx.Stroke()
 	}
 
 	// y-axis year label
-	for i := range int(arrangement.w / 12) {
+	for i := range int(arrangement.W / 12) {
 		bottom := positionToCoordinate(Position{X: i * 12, Y: 0})
-		top := positionToCoordinate(Position{X: i * 12, Y: arrangement.h - 1})
-		yearLabel := canvas.NewTextLine(face, strconv.Itoa(arrangement.originYear+i), canvas.Middle)
+		top := positionToCoordinate(Position{X: i * 12, Y: arrangement.H - 1})
+		yearLabel := canvas.NewTextLine(face, strconv.Itoa(arrangement.YearOfOrigin+i), canvas.Middle)
 		ctx.DrawText(bottom.X+cellSize.W*6, bottom.Y-cellSize.H/2-axisFontSize/2, yearLabel)
 		ctx.DrawText(top.X+cellSize.W*6, top.Y+cellSize.H/2+axisFontSize/2, yearLabel)
 	}
@@ -143,24 +143,25 @@ func drawGrid(ctx *canvas.Context, arrangement Arrangement) {
 	face := fontFamily.Face(axisFontSize, canvas.Grey, canvas.FontBold, canvas.FontNormal)
 
 	ctx.SetStrokeColor(canvas.Gray)
-	ctx.SetStrokeWidth(0.5)
+	ctx.SetStrokeWidth(0.4)
 
 	// x grid line
-	for i := range int(arrangement.w/12) + 1 {
+	for i := range int(arrangement.W/12) + 1 {
 		bottom := positionToCoordinate(Position{X: i * 12, Y: 0})
-		top := positionToCoordinate(Position{X: i * 12, Y: arrangement.h - 1})
+		top := positionToCoordinate(Position{X: i * 12, Y: arrangement.H - 1})
 		ctx.MoveTo(bottom.X, bottom.Y-cellSize.H/2)
 		ctx.LineTo(top.X, top.Y+cellSize.H/2)
 		ctx.Stroke()
 	}
 
-	ctx.SetStrokeColor(canvas.Grey)
-	ctx.SetStrokeWidth(0.1)
-
 	// y grid line (for debug)
-	for i := range arrangement.h {
+	ctx.SetStrokeColor(canvas.Lightgray)
+	ctx.SetStrokeWidth(0.05)
+	face = fontFamily.Face(axisFontSize, canvas.Lightgray, canvas.FontBold, canvas.FontNormal)
+
+	for i := range arrangement.H {
 		left := positionToCoordinate(Position{X: 0, Y: i})
-		right := positionToCoordinate(Position{X: arrangement.w, Y: i})
+		right := positionToCoordinate(Position{X: arrangement.W, Y: i})
 		ctx.MoveTo(left.X, left.Y)
 		ctx.LineTo(right.X, right.Y)
 		ctx.Stroke()
@@ -204,19 +205,14 @@ func drawRelationLines(ctx *canvas.Context, rfcIndex *RfcIndex, rfc *RfcLabel) {
 func drawArrowLine(ctx *canvas.Context, sourceRfc, destRfc *RfcLabel, lineColor color.Color) {
 	ctx.SetFillColor(lineColor)
 	ctx.SetStrokeColor(lineColor)
-	ctx.SetStrokeWidth(1.0)
+	ctx.SetStrokeWidth(0.8)
 
 	source := positionToCoordinate(sourceRfc.Position)
 	dest := positionToCoordinate(destRfc.Position)
 
 	polyline := canvas.Polyline{}
-	endingMarker := polyline.Add(0, 0).Add(-1.5, -1.0).Add(-1.5, 1.0).Close().ToPath()
+	endingMarker := polyline.Add(0, 0).Add(-1.0, -0.5).Add(-1.0, 0.5).Close().ToPath()
 	line := canvas.Line(dest.X-(source.X+labelSize.W), dest.Y-source.Y)
 	markers := line.Markers(nil, nil, endingMarker, true)
-	if len(markers) == 0 {
-		// Workaround for bug that causes markers to be empty
-		ctx.DrawPath(source.X+labelSize.W, source.Y, line)
-	} else {
-		ctx.DrawPath(source.X+labelSize.W, source.Y, line, markers[0])
-	}
+	ctx.DrawPath(source.X+labelSize.W, source.Y, line, markers[0])
 }
